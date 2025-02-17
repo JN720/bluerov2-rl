@@ -3,9 +3,10 @@ from gym import spaces
 import numpy as np
 import rclpy
 import os
+import sys
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
-from ray.rllib.algorithms.ppo import PPO
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 from thrust import EnvManager, PositionReader, ThrusterCommandPublisher
 
@@ -21,8 +22,8 @@ class GazeboEnv(gym.Env):
         self.position_reader = PositionReader(self.env_manager)
         self.thruster_command_publisher = ThrusterCommandPublisher(self.position_reader)
 
-        rclpy.spin(self.position_reader)
-        rclpy.spin(self.thruster_command_publisher)
+        # rclpy.spin(self.position_reader)
+        # rclpy.spin(self.thruster_command_publisher)
 
     def reset(self):
         # Reset the environment
@@ -62,16 +63,10 @@ class CustomCallbacks(RLlibCallback):
         # Continue the simulation after episode start logic
         null_env.toggle_simulation(True)
 
-config = {
-    "env": GazeboEnv,  
-    "callbacks": CustomCallbacks,
-    "framework": "torch",
-    "num_workers": 1,  
-    "env_config": {},  
-    "epochs": 1
-}
+ppo_config = PPOConfig()
+ppo_config.environment(GazeboEnv).callbacks(CustomCallbacks).framework("torch").learners(num_learners = 1, num_gpus_per_learner = 1)
 
-trainer = PPO(config=config)
+trainer = PPO(config=ppo_config)
 
 trainer.train()
 

@@ -178,21 +178,21 @@ class PositionReader(Node):
         
         return (x, y, distance)
 
-def main(args=None):
-    rclpy.init(args=args)
-    env_manager = EnvManager()
-    position_reader = PositionReader(env_manager)
-    thruster_command_publisher = ThrusterCommandPublisher(position_reader)
-    # image_saver = ImageSaver()
-    # rclpy.spin(thruster_command_publisher)
-    # rclpy.spin_once(image_saver)
+# def main(args=None):
+#     rclpy.init(args=args)
+#     env_manager = EnvManager()
+#     position_reader = PositionReader(env_manager)
+#     thruster_command_publisher = ThrusterCommandPublisher(position_reader)
+#     # image_saver = ImageSaver()
+#     # rclpy.spin(thruster_command_publisher)
+#     # rclpy.spin_once(image_saver)
 
-    # image_saver.destroy_node()
-    thruster_command_publisher.destroy_node()
-    position_reader.destroy_node()
-    env_manager.destroy_node()
+#     # image_saver.destroy_node()
+#     thruster_command_publisher.destroy_node()
+#     position_reader.destroy_node()
+#     env_manager.destroy_node()
 
-    rclpy.shutdown()
+#     rclpy.shutdown()
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
