@@ -24,7 +24,8 @@ class EnvManager(Node):
     def __init__(self):
         super().__init__('reset_episode_node')
         self.set_state = self.create_client(SetEntityState, '/world/ocean/set_pose')
-        self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
+        # self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
+        # self.timer_callback()
 
         self.target_position = np.zeros(3, dtype = np.float32)
 
@@ -68,12 +69,12 @@ class EnvManager(Node):
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def timer_callback(self):
-        self.target = np.array([3, 0, 3], dtype = np.float32) + (np.random.rand(3) * 1)
+        self.target_position = np.array([3, 0, 3], dtype = np.float32) + (np.random.rand(3) * 1)
         start_position = np.array([0, 0, 3], dtype = np.float32)
 
         self.toggle_simulation(False)
 
-        self.set_position('slug', *self.target, 0, 0, 0, 1)
+        self.set_position('slug', *self.target_position, 0, 0, 0, 1)
         self.set_position('bluerov2', *start_position, 0, 0, 0, 1)
 
         self.toggle_simulation(True)
@@ -88,7 +89,7 @@ class ThrusterCommandPublisher(Node):
         self.position_reader = position_reader
         # One publisher for each thruster
         self.publishers_ = [self.create_publisher(Float64, '/bluerov2/cmd_thruster{}'.format(i + 1), 10) for i in range(6)]
-        self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
+        # self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
         self.model = None
 
     def timer_callback(self):
@@ -99,7 +100,7 @@ class ThrusterCommandPublisher(Node):
 
         for power, publisher in zip(policy, self.publishers_):
             msg = Float64()
-            msg.data = power
+            msg.data = float(power)
             publisher.publish(msg)
 
         self.get_logger().info('Executed thruster policy')
@@ -107,7 +108,7 @@ class ThrusterCommandPublisher(Node):
     def execute(self, action):
         for power, publisher in zip(action, self.publishers_):
             msg = Float64()
-            msg.data = power
+            msg.data = float(power)
             publisher.publish(msg)
 
 class ImageSaver(Node):
@@ -147,14 +148,14 @@ class PositionReader(Node):
         self.position = msg
     
     def get_observation(self):
-        agent_pos = np.array(self.position.position)
-        target_pos = np.array(self.env_manager.target_position)
+        agent_pos = np.array([self.position.position.x, self.position.position.y, self.position.position.y])
+        target_pos = self.env_manager.target_position
         
         # Compute displacement vector from agent to target (in world coordinates)
         displacement = target_pos - agent_pos
         
         # Normalize the agent's quaternion to ensure it's a unit quaternion
-        agent_quat = np.array(self.position.orientation)
+        agent_quat = np.array([self.position.orientation.x, self.position.orientation.y, self.position.orientation.z, self.position.orientation.w])
         norm = np.linalg.norm(agent_quat)
         if np.isclose(norm, 0.0):
             raise ValueError("Agent's quaternion has zero magnitude.")
@@ -176,6 +177,8 @@ class PositionReader(Node):
         # Compute the straight-line 3D distance
         distance = np.linalg.norm(displacement)
         
+        print('obs xyd:', x, y, distance)
+        print('positions', agent_pos, target_pos)
         return (x, y, distance)
 
 # def main(args=None):
