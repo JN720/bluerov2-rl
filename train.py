@@ -7,6 +7,9 @@ from torch.distributions.normal import Normal
 import rclpy
 import numpy as np
 
+CAMERA_HEIGHT = 4
+CAMERA_WIDTH = 4
+
 class RobotActor(nn.Module):
     def __init__(self, actions: int):
         super(RobotActor, self).__init__()
@@ -14,11 +17,18 @@ class RobotActor(nn.Module):
         self.network = nn.Sequential(
             nn.Linear(3, 8),
             nn.ReLU(),
-            nn.Linear(8, actions * 2)
+            nn.Linear(8, actions)
+        )
+
+        self.network_std = nn.Sequential(
+            nn.Linear(3, 8),
+            nn.ReLU(),
+            nn.Linear(8, actions)
         )
     def forward(self, x):
         result = self.network(x)[0]
-        return result[0:self.actions], result[self.actions:]
+        log_std = self.network_std(x)[0]
+        return result, log_std
     
 class RobotCritic(nn.Module):
     def __init__(self):
@@ -35,7 +45,10 @@ def reward_function(x, y, distance, goal_distance):
     reward = np.abs(goal_distance - distance) + np.sqrt(2) - np.sqrt((x ** 2) + (y ** 2)) + 1
     return reward
 
-from thrust import EnvManager, ThrusterCommandPublisher, PositionReader
+def out_of_bounds(x, y, distance):
+    return np.abs(x / distance) > CAMERA_WIDTH or np.abs(y / distance) > CAMERA_HEIGHT
+
+from thrust import EnvManager, ThrusterCommandPublisher, PositionReader, ImageReader
 import time
 
 class GzEnv():
@@ -43,9 +56,12 @@ class GzEnv():
         self.env_manager = EnvManager()
         self.position_reader = PositionReader(self.env_manager)
         self.thruster_command_publisher = ThrusterCommandPublisher(self.position_reader, False)
+        self.image_reader = ImageReader()
         self.goal_distance = 3
+        self.steps = 0
 
     def step(self, action):
+        self.steps += 1
         # Execute the action and wait a bit
         self.thruster_command_publisher.execute(action)
 
@@ -54,17 +70,26 @@ class GzEnv():
 
         # Update position in reader
         rclpy.spin_once(self.position_reader)
+        rclpy.spin_once(self.image_reader)
 
+        self.image_observation = self.image_reader.cur_image
         x, y, distance = self.position_reader.get_observation()
         self.observation = np.array([x, y, distance], dtype = np.float32)
         reward = reward_function(x, y, distance, self.goal_distance)
         
-        return self.observation, reward, np.random.rand() > 0.95, False, {}
+        return self.observation, reward, out_of_bounds(x, y, distance), self.steps > 20, {}
 
     def reset(self):
+        self.steps = 0
+        self.thruster_command_publisher.execute([0] * 6)
+
+        rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.2)
         self.env_manager.timer_callback()
         # Update position in reader
         rclpy.spin_once(self.position_reader)
+        rclpy.spin_once(self.image_reader)
+
+        self.image_observation = self.image_reader.cur_image
         x, y, distance = self.position_reader.get_observation()
         self.observation = np.array([x, y, distance], dtype = np.float32)
 
@@ -321,13 +346,19 @@ if __name__ == '__main__':
     steps = 0
     nobs = 0
 
+    reward_histories = []
+
     for i in range(EPISODES):
+        reward_history = []
         obs = torch.tensor(env.reset()[0])
         done = False
         score = 0
         while not done:
             action, prob, value = agent.act(obs)
             nobs, reward, done, _, _ = env.step(action)
+
+            reward_history.append(reward)
+
             nobs = torch.tensor(nobs)
             agent.store_mem(obs, prob, action, reward, value, done)
             score += reward
@@ -336,6 +367,13 @@ if __name__ == '__main__':
             if steps % agent.learn_iters == 0:
                 agent.learn()
         print("Episode: {} Score: {}".format(i + 1, score))
+        reward_histories.append(reward_history)
     env.close()
 
     torch.save(agent.actor.state_dict(), 'actor.pth')
+
+    with open('training_results.txt', 'w') as f:
+        for i, rewards in enumerate(reward_histories):
+            for reward in rewards:
+                f.write('{},'.format(reward))
+            f.write('\n')

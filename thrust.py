@@ -137,6 +137,23 @@ class ImageSaver(Node):
             self.get_logger().info('Image saved as saved_image.png')
             # self.image_saved = True  
 
+class ImageReader(Node):
+    def __init__(self):
+        super().__init__('image_reader')
+        self.subscription = self.create_subscription(
+            Image,
+            '/bluerov2/image',
+            self.image_callback,
+            10)
+        self.bridge = CvBridge()
+        self.cur_image = None
+
+    def image_callback(self, msg):
+        cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.cur_image = cv_image
+        self.get_logger().info('Image read')
+
+
 class PositionReader(Node):
     def __init__(self, env_manager):
         super().__init__('image_saver')
