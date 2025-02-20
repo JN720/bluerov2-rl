@@ -83,7 +83,7 @@ class EnvManager(Node):
 
 # Add model and spin to test the agent
 class ThrusterCommandPublisher(Node):
-    def __init__(self, position_reader):
+    def __init__(self, position_reader, inference = True):
         super().__init__('thruster_command_publisher')
         # Used to read the position to predict
         self.position_reader = position_reader
@@ -91,12 +91,17 @@ class ThrusterCommandPublisher(Node):
         self.publishers_ = [self.create_publisher(Float64, '/bluerov2/cmd_thruster{}'.format(i + 1), 10) for i in range(6)]
         # self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
         self.model = None
+        self.policy = [0] * 6
+        self.inference = inference
 
     def timer_callback(self):
-        policy = [0] * 6
-        if self.model is not None:
-            observation = self.position_reader.get_observation()
-            policy = self.model(observation)
+        policy = self.policy
+        if self.inference:
+            if self.model is not None:
+                observation = self.position_reader.get_observation()
+                policy = self.model(observation)
+            else:
+                raise ValueError('Model not set')
 
         for power, publisher in zip(policy, self.publishers_):
             msg = Float64()
@@ -110,6 +115,9 @@ class ThrusterCommandPublisher(Node):
             msg = Float64()
             msg.data = float(power)
             publisher.publish(msg)
+    
+    def set_action(self, action):
+        self.policy = action
 
 class ImageSaver(Node):
     def __init__(self):
