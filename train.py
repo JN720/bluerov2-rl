@@ -42,7 +42,7 @@ class RobotCritic(nn.Module):
         return self.network(x)
 
 def reward_function(x, y, distance, goal_distance):
-    reward = np.abs(goal_distance - distance) + np.sqrt(2) - np.sqrt((x ** 2) + (y ** 2)) + 1
+    reward = -np.abs(goal_distance - distance) - np.sqrt((x ** 2) + (y ** 2)) + 2
     return reward
 
 def out_of_bounds(x, y, distance):
@@ -73,24 +73,28 @@ class GzEnv():
         rclpy.spin_once(self.image_reader)
 
         self.image_observation = self.image_reader.cur_image
-        x, y, distance = self.position_reader.get_observation()
+        is_front, x, y, distance = self.position_reader.get_observation()
         self.observation = np.array([x, y, distance], dtype = np.float32)
         reward = reward_function(x, y, distance, self.goal_distance)
         
-        return self.observation, reward, out_of_bounds(x, y, distance), self.steps > 20, {}
+        return self.observation, reward, out_of_bounds(x, y, distance), self.steps > 20 or is_front, {}
 
     def reset(self):
         self.steps = 0
         self.thruster_command_publisher.execute([0] * 6)
 
         rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.2)
-        self.env_manager.timer_callback()
-        # Update position in reader
         rclpy.spin_once(self.position_reader)
+        pose = self.position_reader.position
+        position = np.array([pose.position.x, pose.position.y, pose.position.z], dtype = np.float32)
+        orientation = np.array([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w], dtype = np.float32)
+
+        self.env_manager.timer_callback(position, orientation)
+        # Update position in reader
         rclpy.spin_once(self.image_reader)
 
         self.image_observation = self.image_reader.cur_image
-        x, y, distance = self.position_reader.get_observation()
+        is_front, x, y, distance = self.position_reader.get_observation()
         self.observation = np.array([x, y, distance], dtype = np.float32)
 
         return self.observation - np.array([0, 0, -self.goal_distance], dtype = np.float32), {}

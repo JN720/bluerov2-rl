@@ -68,14 +68,20 @@ class EnvManager(Node):
 
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def timer_callback(self):
-        self.target_position = np.array([3, 0, 3], dtype = np.float32) + (np.random.rand(3) * 1)
-        start_position = np.array([0, 0, 3], dtype = np.float32)
+    def timer_callback(self, agent_position, agent_orientation):
+        # Set the target position to a random location
+        self.target_position = np.array([3, 0, 0], dtype = np.float32) + (np.random.rand(3) * 1)
+        start_position = np.array([0, 0, 0], dtype = np.float32)
+        rotation = Rotation.from_quat(agent_orientation)
+        inv_rotation = rotation.inv()
+        local_target_position = inv_rotation.apply(self.target_position - agent_position)
+
+        self.target_position = local_target_position
 
         self.toggle_simulation(False)
 
-        self.set_position('slug', *self.target_position, 0, 0, 0, 1)
-        self.set_position('bluerov2', *start_position, 0, 0, 0, 1)
+        self.set_position('slug', *local_target_position, 0, 0, 0, 1)
+        # self.set_position('bluerov2', *start_position, 0, 0, 0, 1)
 
         self.toggle_simulation(True)
 
@@ -196,15 +202,16 @@ class PositionReader(Node):
         local_displacement = inv_rotation.apply(displacement)
         
         # Extract x (forward/backward) and y (left/right) components
-        x = local_displacement[0]
-        y = local_displacement[1]
+        is_front = local_displacement[0] >= 0
+        x = local_displacement[1]
+        y = local_displacement[2]
         
         # Compute the straight-line 3D distance
         distance = np.linalg.norm(displacement)
         
-        print('obs xyd:', x, y, distance)
+        print('obs xyd:', is_front, x, y, distance)
         print('positions', agent_pos, target_pos)
-        return (x, y, distance)
+        return (is_front, x, y, distance)
 
 # def main(args=None):
 #     rclpy.init(args=args)
