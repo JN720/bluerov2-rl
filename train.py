@@ -9,6 +9,9 @@ import numpy as np
 
 CAMERA_HEIGHT = 4
 CAMERA_WIDTH = 4
+A=0.1
+B=0.1
+C=5
 
 class RobotActor(nn.Module):
     def __init__(self, actions: int):
@@ -42,7 +45,7 @@ class RobotCritic(nn.Module):
         return self.network(x)
 
 def reward_function(x, y, distance, goal_distance):
-    reward = -np.abs(goal_distance - distance) - np.sqrt((x ** 2) + (y ** 2)) + 2
+    reward = (-np.abs(goal_distance - distance) ** 2 * A) - (B * np.sqrt(((x / CAMERA_WIDTH) ** 2) + ((y / CAMERA_HEIGHT) ** 2))) + C
     return reward
 
 def out_of_bounds(x, y, distance):
@@ -65,7 +68,7 @@ class GzEnv():
         # Execute the action and wait a bit
         self.thruster_command_publisher.execute(action)
 
-        rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.2)
+        rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.1)
         time.sleep(0.1)
 
         # Update position in reader
@@ -77,7 +80,7 @@ class GzEnv():
         self.observation = np.array([x, y, distance], dtype = np.float32)
         reward = reward_function(x, y, distance, self.goal_distance)
         
-        return self.observation, reward, out_of_bounds(x, y, distance), self.steps > 20 or is_front, {}
+        return self.observation, reward, out_of_bounds(x, y, distance) or not is_front, self.steps > 50, {}
 
     def reset(self):
         self.steps = 0
@@ -345,7 +348,7 @@ if __name__ == '__main__':
 
     agent = Agent(ACTIONS, INPUT_DIMS, LR, DISCOUNT_FACTOR, POLICY_CLIP, SMOOTHING, EPOCHS, BATCH_SIZE, LEARN_ITERS)
 
-    EPISODES = 5
+    EPISODES = 30
 
     steps = 0
     nobs = 0
@@ -359,7 +362,8 @@ if __name__ == '__main__':
         score = 0
         while not done:
             action, prob, value = agent.act(obs)
-            nobs, reward, done, _, _ = env.step(action)
+            nobs, reward, done, truncated, _ = env.step(action)
+            done = done or truncated
 
             reward_history.append(reward)
 
