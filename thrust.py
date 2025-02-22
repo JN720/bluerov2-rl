@@ -14,6 +14,7 @@ import subprocess
 import torch
 from scipy.spatial.transform import Rotation
 
+POWER_MULTIPLIER = 5
 
 '''
 ign service --reqtype ignition.msgs.Pose --reptype ignition.msgs.Boolean --service /world/ocean/set_pose --timeout 5000 --req 'name: "slug", position: {y: 6}'
@@ -74,13 +75,13 @@ class EnvManager(Node):
         start_position = np.array([0, 0, 0], dtype = np.float32)
         rotation = Rotation.from_quat(agent_orientation)
         inv_rotation = rotation.inv()
-        local_target_position = inv_rotation.apply(self.target_position - agent_position)
+        local_target_position = inv_rotation.apply(self.target_position)
 
-        self.target_position = local_target_position
+        self.target_position = agent_position + local_target_position
 
         self.toggle_simulation(False)
 
-        self.set_position('slug', *local_target_position, 0, 0, 0, 1)
+        self.set_position('slug', *self.target_position, 0, 0, 0, 1)
         # self.set_position('bluerov2', *start_position, 0, 0, 0, 1)
 
         self.toggle_simulation(True)
@@ -111,7 +112,7 @@ class ThrusterCommandPublisher(Node):
 
         for power, publisher in zip(policy, self.publishers_):
             msg = Float64()
-            msg.data = float(power)
+            msg.data = float(power) * POWER_MULTIPLIER
             publisher.publish(msg)
 
         self.get_logger().info('Executed thruster policy')
@@ -119,7 +120,7 @@ class ThrusterCommandPublisher(Node):
     def execute(self, action):
         for power, publisher in zip(action, self.publishers_):
             msg = Float64()
-            msg.data = float(power)
+            msg.data = float(power) * POWER_MULTIPLIER
             publisher.publish(msg)
     
     def set_action(self, action):

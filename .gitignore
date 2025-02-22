@@ -5,3 +5,5 @@
 !train.py
 !.gitignore
 !ld_lib_path
+!result_analysis.ipynb
+!inference.py

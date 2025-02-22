@@ -6,6 +6,8 @@ from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
 import rclpy
 import numpy as np
+import os
+from datetime import datetime
 
 CAMERA_HEIGHT = 4
 CAMERA_WIDTH = 4
@@ -68,7 +70,7 @@ class GzEnv():
         # Execute the action and wait a bit
         self.thruster_command_publisher.execute(action)
 
-        rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.1)
+        rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.2)
         time.sleep(0.1)
 
         # Update position in reader
@@ -87,6 +89,8 @@ class GzEnv():
         self.thruster_command_publisher.execute([0] * 6)
 
         rclpy.spin_once(self.thruster_command_publisher, timeout_sec = 0.2)
+        # Let the velocity level out a bit
+        time.sleep(3)
         rclpy.spin_once(self.position_reader)
         pose = self.position_reader.position
         position = np.array([pose.position.x, pose.position.y, pose.position.z], dtype = np.float32)
@@ -155,102 +159,6 @@ class Agent:
             rvalue += batch_indices[i:i + self.batch_size]
         return np.array(rvalue, dtype = np.int64)
         
-    def actt(self, obs):
-        obs = obs.unsqueeze(0)
-        policy = self.actor(obs).squeeze()
-        policy1 = Categorical(F.softmax(policy[0:5], dim = -1))
-        policy2 = Categorical(F.softmax(policy[5:8], dim = -1))
-        policy3 = Categorical(F.softmax(policy[8:10], dim = -1))
-        policy4 = Categorical(F.softmax(policy[10:12], dim = -1))
-        value = self.critic(obs).squeeze().item()
-        #action and log probs will be of size 3
-        action1 = policy1.sample()
-        action2 = policy2.sample()
-        action3 = policy3.sample()
-        action4 = policy4.sample()
-        #since these log probs are passed directly into store mem,
-        #and the same is done with the new probs, only the sum is returned
-        prob1 = policy1.log_prob(action1).item()
-        prob2 = policy2.log_prob(action2).item()
-        prob3 = policy3.log_prob(action3).item()
-        prob4 = policy3.log_prob(action3).item()
-        
-        return [action1.item(), action2.item(), action3.item(), action4.item()], prob1 + prob2 + prob3 + prob4, value
-        
-    def learnn(self):
-        advantage = np.zeros(len(self.rewards) - 1, dtype = np.float32)
-        self.states = np.array(self.states, dtype = np.float32)
-        
-        for i in range(self.epochs):
-            batch_indices = np.array(self.batching(), dtype = np.int64)
-            #gae
-            #summation of memory
-            for j in range(len(self.rewards) - 1):
-                #delta coefficient
-                discount = 1
-                #advantage
-                a = 0
-                for k in range(j, len(self.rewards) - 1):
-                    #delta of timestep = (done coefficient * gamma * next state value) + reward - current state value
-                    #basically new value + reward - cur value
-                    a += discount * (((1 - self.dones[k]) * self.gamma * self.values[k + 1]) + self.rewards[k] - self.values[k])
-                    #gae lamba^n * gamma^n
-                    discount *= self.gamma * self.gae_lambda
-                #advantage at each timestep
-                advantage[j] = a
-            advantage = torch.Tensor(advantage).float()
-            state_batches = []
-            p1 = []
-            ab = []
-            vb = []
-            advantage_batch = []
-            #sampling of random memory
-            for i in batch_indices:
-                state_batches.append(self.states[i])
-                p1.append(self.probs[i])
-                ab.append(self.actions[i])
-                vb.append(self.values[i])
-                advantage_batch.append(advantage[i])
-            state_batches = torch.Tensor(np.array(state_batches)).float()
-            #these 2 are size 4 for the multi discrete implementation
-            p1 = torch.Tensor(np.array(p1)).float()
-            ab = torch.Tensor(np.array(ab)).long()
-            vb = torch.Tensor(np.array(vb)).float()
-            advantage_batch = torch.Tensor(advantage_batch).float()
-            #predictions
-            apred = self.actor(state_batches)
-            apred1 = Categorical(F.softmax(apred[0, 0:5], dim = -1))
-            apred2 = Categorical(F.softmax(apred[0, 5:8], dim = -1))
-            apred3 = Categorical(F.softmax(apred[0, 8:10], dim = -1))
-            apred4 = Categorical(F.softmax(apred[0, 10:12], dim = -1))
-            cpred = self.critic(state_batches)
-            #get new log probs corresponding to past actions from memory
-            #there are 3 of these now
-            #in the 37 implementation details thingy, they multiplied the probs for each distribution
-            #since these are logits, they shall be added
-            p2 = apred1.log_prob(ab[:, 0]) + apred2.log_prob(ab[:, 1]) + apred3.log_prob(ab[:, 2]) + apred4.log_prob(ab[:, 3])
-            #actor loss calculation: this is the same now that the probs are combined
-            pratio = p2.exp() / p1.exp()
-            wpratio = pratio * advantage_batch
-            cwpratio = torch.clamp(pratio, 1 - self.epsilon, 1 + self.epsilon) * advantage_batch
-            aloss = (-torch.min(wpratio, cwpratio)).mean()
-            #critic loss: gae + state value MSE'd with raw network prediction
-            #gae + state value = new state + reward
-            #in other words, optimize state value to become new state + reward
-            ctarget = advantage_batch + vb
-            criterion = torch.nn.MSELoss()
-            #closs = ((ctarget - cpred) ** 2).mean()
-            closs = criterion(ctarget.unsqueeze(-1), cpred)
-            #now includes entropy term
-            entropy = (0.1 * apred1.entropy()) + (0.8 * apred2.entropy()) + (0.2 * apred3.entropy()) + (0.1 * apred4.entropy())
-            loss = aloss + (0.5 * closs) - (0.4 * entropy)
-            self.actor.opt.zero_grad()
-            self.critic.opt.zero_grad()
-            loss.backward()
-            self.actor.opt.step()
-            self.critic.opt.step()
-        self.reset_mem()
-
     def act(self, obs):
         obs = obs.unsqueeze(0)
         # Actor outputs mean and log standard deviation for each of the 6 thrusters
@@ -331,7 +239,11 @@ class Agent:
 
         self.reset_mem()
 
+
 if __name__ == '__main__':
+    os.makedirs('models', exist_ok = True)
+    os.makedirs('results', exist_ok = True)
+
     ACTIONS = 6
     INPUT_DIMS = 3
     LR = 5e-4
@@ -342,11 +254,20 @@ if __name__ == '__main__':
     BATCH_SIZE = 5
     LEARN_ITERS = 20
 
+    LOAD_MODELS = False
+
     rclpy.init()
 
     env = GzEnv()
 
     agent = Agent(ACTIONS, INPUT_DIMS, LR, DISCOUNT_FACTOR, POLICY_CLIP, SMOOTHING, EPOCHS, BATCH_SIZE, LEARN_ITERS)
+
+    if LOAD_MODELS:
+        try:
+            agent.actor.load_state_dict(torch.load('actor.pth'))
+            agent.critic.load_state_dict(torch.load('critic.pth'))
+        except:
+            print("No models found")
 
     EPISODES = 30
 
@@ -354,6 +275,7 @@ if __name__ == '__main__':
     nobs = 0
 
     reward_histories = []
+    best_avg = -9999
 
     for i in range(EPISODES):
         reward_history = []
@@ -375,13 +297,20 @@ if __name__ == '__main__':
             if steps % agent.learn_iters == 0:
                 agent.learn()
         print("Episode: {} Score: {}".format(i + 1, score))
+        if np.mean(np.array(reward_history)) > best_avg:
+            best_avg = np.mean(np.array(reward_history))
+            torch.save(agent.actor.state_dict(), 'models/actor-best-{}.pth'.format(i))
         reward_histories.append(reward_history)
     env.close()
 
-    torch.save(agent.actor.state_dict(), 'actor.pth')
+    torch.save(agent.actor.state_dict(), 'checkpoints/actor.pth')
+    torch.save(agent.critic.state_dict(), 'checkpoints/critic.pth')
 
-    with open('training_results.txt', 'w') as f:
+
+    now = datetime.now()
+    formatted_date = now.strftime("%Y-%m-%d_%H:%M:%S")
+    with open('training_results_{}.txt'.format(formatted_date), 'w') as f:
         for i, rewards in enumerate(reward_histories):
             for reward in rewards:
                 f.write('{},'.format(reward))
-            f.write('\n')
+            f.write('\n') 
