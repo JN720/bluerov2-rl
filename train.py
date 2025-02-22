@@ -269,7 +269,7 @@ if __name__ == '__main__':
         except:
             print("No models found")
 
-    EPISODES = 30
+    EPISODES = 200
 
     steps = 0
     nobs = 0
@@ -303,8 +303,8 @@ if __name__ == '__main__':
         reward_histories.append(reward_history)
     env.close()
 
-    torch.save(agent.actor.state_dict(), 'checkpoints/actor.pth')
-    torch.save(agent.critic.state_dict(), 'checkpoints/critic.pth')
+    torch.save(agent.actor.state_dict(), 'models/actor.pth')
+    torch.save(agent.critic.state_dict(), 'models/critic.pth')
 
 
     now = datetime.now()

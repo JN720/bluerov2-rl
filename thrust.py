@@ -75,7 +75,7 @@ class EnvManager(Node):
         start_position = np.array([0, 0, 0], dtype = np.float32)
         rotation = Rotation.from_quat(agent_orientation)
         inv_rotation = rotation.inv()
-        local_target_position = inv_rotation.apply(self.target_position)
+        local_target_position = rotation.apply(self.target_position)
 
         self.target_position = agent_position + local_target_position
 

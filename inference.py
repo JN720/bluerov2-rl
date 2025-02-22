@@ -32,6 +32,7 @@ if __name__ == '__main__':
     target_distances = []
     center_distances = []
     for i in range(1000):
+        rclpy.spin_once(position_reader)
         is_front, x, y, distance = position_reader.get_observation()
 
         target_distance = np.abs(distance - goal_distance)
@@ -54,9 +55,9 @@ if __name__ == '__main__':
     now = datetime.now()
     formatted_date = now.strftime("%Y-%m-%d_%H:%M:%S")
     with open('data/distance_to_target_{}.txt'.format(formatted_date), 'w') as f:
-            for val in target_distances:
-                f.write('{}\n'.format(val))
+        for val in target_distances:
+            f.write('{}\n'.format(val))
 
-    with open('data/distance_from_center{}.txt'.format(formatted_date), 'w') as f:
+    with open('data/distance_from_center_{}.txt'.format(formatted_date), 'w') as f:
         for val in enumerate(center_distances):
             f.write('{}\n'.format(val))
