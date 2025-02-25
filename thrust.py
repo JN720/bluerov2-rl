@@ -22,11 +22,12 @@ ign service --reqtype ignition.msgs.Physics --reptype ignition.msgs.Boolean --se
 '''
 
 class EnvManager(Node):
-    def __init__(self):
+    def __init__(self, hard_mode = False):
         super().__init__('reset_episode_node')
         self.set_state = self.create_client(SetEntityState, '/world/ocean/set_pose')
         # self.timer = self.create_timer(1.0, self.timer_callback)  # Publish every 1 second
         # self.timer_callback()
+        self.hard_mode = hard_mode
 
         self.target_position = np.zeros(3, dtype = np.float32)
 
@@ -45,7 +46,7 @@ class EnvManager(Node):
             '--timeout',
             '5000',
             '--req',
-            """'name: "{}", position: {}, orientation: {}'""".format(name, position_str, orientation_str)
+            """'name:"{}",position:{},orientation:{}'""".format(name, position_str, orientation_str)
         ]
 
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -72,6 +73,11 @@ class EnvManager(Node):
     def timer_callback(self, agent_position, agent_orientation):
         # Set the target position to a random location
         self.target_position = np.array([3, 0, 0], dtype = np.float32) + (np.random.rand(3) * 1)
+        if self.hard_mode:
+            self.target_position += np.array([6, 0, 0], dtype = np.float32) + (np.random.rand(3) * 3)
+        
+        if self.target_position[2] < 0:
+            self.target_position[2] = 0
         start_position = np.array([0, 0, 0], dtype = np.float32)
         rotation = Rotation.from_quat(agent_orientation)
         inv_rotation = rotation.inv()
@@ -212,7 +218,8 @@ class PositionReader(Node):
         
         print('obs xyd:', is_front, x, y, distance)
         print('positions', agent_pos, target_pos)
-        return (is_front, x, y, distance)
+        # Invert x to match the camera
+        return (is_front, -x, y, distance)
 
 # def main(args=None):
 #     rclpy.init(args=args)

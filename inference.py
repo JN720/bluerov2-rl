@@ -12,14 +12,16 @@ ROTATION_THRESHOLD = 0.3
 DISTANCE_THRESHOLD = 0.5
 POWER = 1
 
-def procedural_policy(x, y, distance):
+def procedural_policy(x, y, distance, goal_distance):
     forward = 0
     right = 0
     down = 0
     if distance > goal_distance + DISTANCE_THRESHOLD:
         forward = 1
+        print('going closer')
     elif distance < goal_distance - DISTANCE_THRESHOLD:
         forward = -1
+        print('going farther')
     
     if x > ROTATION_THRESHOLD:
         right = 1
@@ -35,22 +37,29 @@ def procedural_policy(x, y, distance):
     if forward == 1:
         policy[0] = POWER
         policy[1] = POWER
-        if right == 1:
-            policy[4] = POWER
-        elif right == -1:
+        if right == -1:
+            policy[2] = POWER
+        elif right == 1:
             policy[3] = POWER
     elif forward == -1:
+        policy[2] = POWER
         policy[3] = POWER
-        policy[4] = POWER
         if right == 1:
+            policy[1] = POWER
+        elif right == -1:
+            policy[0] = POWER
+    else:
+        if right == 1:
+            policy[1] = POWER
             policy[2] = POWER
         elif right == -1:
-            policy[1] = POWER
+            policy[0] = POWER
+            policy[3] = POWER
     
     if down == 1:
-        policy[5] = POWER
+        policy[4] = POWER
     elif down == -1:
-        policy[6] = POWER
+        policy[5] = POWER
 
     return policy
 
@@ -69,7 +78,7 @@ if __name__ == '__main__':
         print('No model found')
 
 
-    env_manager = EnvManager()
+    env_manager = EnvManager(hard_mode = True)
     position_reader = PositionReader(env_manager)
     thruster_command_publisher = ThrusterCommandPublisher(position_reader)
 
@@ -92,7 +101,7 @@ if __name__ == '__main__':
 
         policy = None
         if use_procedural:
-            policy = procedural_policy(x, y, distance)
+            policy = procedural_policy(x, y, distance, goal_distance)
         else:
             obs = torch.tensor([x, y, distance], dtype=torch.float32).unsqueeze(0)
             with torch.no_grad():
